@@ -1,4 +1,4 @@
-module intraCheck
+module com.pfr.intracheck
 
 go 1.23
 
