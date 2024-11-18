@@ -1,11 +1,11 @@
-name: Fyne-Cross Multi-Arch Build
+name: Fyne-Cross Build with .env
 
 on:
   workflow_dispatch:
 
 jobs:
   build:
-    name: Build for Multiple Architectures
+    name: Build with Fyne-Cross
     runs-on: ubuntu-latest
 
     steps:
@@ -17,16 +17,32 @@ jobs:
       with:
         go-version: 1.21
 
+    - name: Create .env file from secrets
+      run: |
+        echo "INTERNET_TEST_IP=${{ secrets.INTERNET_TEST_IP }}" >> .env
+        echo "INTRANET_PUBLIC_IP=${{ secrets.INTRANET_PUBLIC_IP }}" >> .env
+        echo "WIREGUARD_PORT=${{ secrets.WIREGUARD_PORT }}" >> .env
+        echo "INTRANET_HEALTHCHECK=${{ secrets.INTRANET_HEALTHCHECK }}" >> .env
+        echo "SAMBA_SERVER_IP=${{ secrets.SAMBA_SERVER_IP }}" >> .env
+        echo "SAMBA_USER=${{ secrets.SAMBA_USER }}" >> .env
+        echo "SAMBA_PASSWORD=${{ secrets.SAMBA_PASSWORD }}" >> .env
+
     - name: Install fyne-cross
       run: go install github.com/fyne-io/fyne-cross@latest
 
     - name: Build for Windows 64-bit
+      env:
+        ENV_FILE: .env
       run: fyne-cross windows -arch amd64 -output build/intranet-check-windows-amd64.exe
 
     - name: Build for macOS x86_64
+      env:
+        ENV_FILE: .env
       run: fyne-cross darwin -arch amd64 -output build/intranet-check-macos-amd64.app
 
     - name: Build for macOS ARM64
+      env:
+        ENV_FILE: .env
       run: fyne-cross darwin -arch arm64 -output build/intranet-check-macos-arm64.app
 
     - name: Archive artifacts
