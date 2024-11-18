@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"net/http"
@@ -8,11 +9,13 @@ import (
 	"os/exec"
 	"time"
 
+	"github.com/hirochachacha/go-smb2"
+	"github.com/joho/godotenv"
+
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
-	"github.com/joho/godotenv"
 )
 
 var (
@@ -44,7 +47,13 @@ func loadEnvVariables() {
 }
 
 func checkInternetConnection() string {
-	cmd := exec.Command("ping", "-c", "1", internetTestIP)
+	var cmd *exec.Cmd
+	if os.PathSeparator == '\\' {
+		cmd = exec.Command("ping", "-n", "1", internetTestIP)
+	} else {
+		cmd = exec.Command("ping", "-c", "1", internetTestIP)
+	}
+
 	err := cmd.Run()
 	if err != nil {
 		return "❌ Internet Access: Failed"
@@ -71,19 +80,42 @@ func checkWireguardPortUDP() string {
 }
 
 func checkIntranetHealthcheck() string {
-	resp, err := http.Get("http://" + intranetHealthcheck)
-	if err != nil || resp.StatusCode != http.StatusOK {
-		return fmt.Sprintf("❌ Intranet Healthcheck (%s): Failed", intranetHealthcheck)
+	client := http.Client{
+		Timeout: connectionTimeout,
 	}
+	resp, err := client.Get("http://" + intranetHealthcheck)
+	if err != nil || resp.StatusCode != http.StatusOK {
+		return fmt.Sprintf("❌ Intranet Healthcheck (%s): Failed (%v)", intranetHealthcheck, err)
+	}
+	defer resp.Body.Close()
 	return fmt.Sprintf("✅ Intranet Healthcheck (%s): Successful", intranetHealthcheck)
 }
 
 func checkSambaLogin() string {
-	cmd := exec.Command("smbclient", "-L", fmt.Sprintf("//%s", sambaServerIP), "-U", fmt.Sprintf("%s%%%s", sambaUser, sambaPassword))
-	err := cmd.Run()
+	timeout := 5 * time.Second
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	dialer := &net.Dialer{}
+	conn, err := dialer.DialContext(ctx, "tcp", fmt.Sprintf("%s:445", sambaServerIP))
 	if err != nil {
-		return fmt.Sprintf("❌ Samba Login (%s): Failed", sambaServerIP)
+		return fmt.Sprintf("❌ Samba Login (%s): Failed (Connection Error: %v)", sambaServerIP, err)
 	}
+	defer conn.Close()
+
+	d := &smb2.Dialer{
+		Initiator: &smb2.NTLMInitiator{
+			User:     sambaUser,
+			Password: sambaPassword,
+		},
+	}
+
+	client, err := d.Dial(conn)
+	if err != nil {
+		return fmt.Sprintf("❌ Samba Login (%s): Failed (Auth Error: %v)", sambaServerIP, err)
+	}
+	defer client.Logoff()
+
 	return fmt.Sprintf("✅ Samba Login (%s): Successful", sambaServerIP)
 }
 
