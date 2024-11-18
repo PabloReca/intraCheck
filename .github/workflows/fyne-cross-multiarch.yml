@@ -1,11 +1,11 @@
-name: Fyne-Cross Multi-Arch Build
+name: Fyne-Cross Build and Release
 
 on:
   workflow_dispatch:
 
 jobs:
   build:
-    name: Build for Multiple Architectures
+    name: Build and Release for Windows
     runs-on: ubuntu-latest
 
     steps:
@@ -36,27 +36,27 @@ jobs:
         mkdir -p build
         unzip fyne-cross/dist/windows-amd64/intranet-check-windows-amd64.exe.zip -d build/
 
-    - name: Build for macOS x86_64
+    - name: Archive Windows Executable
       run: |
-        fyne-cross darwin -arch amd64 -app-id "com.pfr.intracheck" -icon "icon.png" -output intranet-check-macos-amd64.app
-        mkdir -p build
-        unzip fyne-cross/dist/darwin-amd64/intranet-check-macos-amd64.app.zip -d build/
-
-    - name: Build for macOS ARM64
-      run: |
-        fyne-cross darwin -arch arm64 -app-id "com.pfr.intracheck" -icon "icon.png" -output intranet-check-macos-arm64.app
-        mkdir -p build
-        unzip fyne-cross/dist/darwin-arm64/intranet-check-macos-arm64.app.zip -d build/
-
-    - name: Archive artifacts
-      run: |
-        zip -r build/intranet-check-windows-amd64.zip build/intranet-check-windows-amd64.exe
-        zip -r build/intranet-check-macos-amd64.zip build/intranet-check-macos-amd64.app
-        zip -r build/intranet-check-macos-arm64.zip build/intranet-check-macos-arm64.app
+        zip -j build/intranet-check-windows-amd64.zip build/intranet-check-windows-amd64.exe
       shell: bash
 
     - name: Upload build artifacts
       uses: actions/upload-artifact@v3
       with:
-        name: build-artifacts
-        path: build/*.zip
+        name: windows-executable
+        path: build/intranet-check-windows-amd64.zip
+
+    - name: Create GitHub Release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: v1.0.0
+        release_name: Release 1.0.0
+        body: |
+          This is the first release of IntraCheck.
+          The Windows executable is included in this release.
+        draft: false
+        prerelease: false
+        files: build/intranet-check-windows-amd64.zip
