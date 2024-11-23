@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"net/http"
 	"os"
 	"os/exec"
 	"time"
@@ -22,7 +21,6 @@ var (
 	internetTestIP      string
 	intranetPublicIP    string
 	wireguardPort       string
-	intranetHealthcheck string
 	sambaServerIP       string
 	sambaUser           string
 	sambaPassword       string
@@ -40,18 +38,15 @@ func loadEnvVariables() {
 	internetTestIP = os.Getenv("INTERNET_TEST_IP")
 	intranetPublicIP = os.Getenv("INTRANET_PUBLIC_IP")
 	wireguardPort = os.Getenv("WIREGUARD_PORT")
-	intranetHealthcheck = os.Getenv("INTRANET_HEALTHCHECK")
 	sambaServerIP = os.Getenv("SAMBA_SERVER_IP")
 	sambaUser = os.Getenv("SAMBA_USER")
 	sambaPassword = os.Getenv("SAMBA_PASSWORD")
 }
 
 func checkInternetConnection() string {
-	var cmd *exec.Cmd
+	cmd := exec.Command("ping", "-c", "1", internetTestIP)
 	if os.PathSeparator == '\\' {
 		cmd = exec.Command("ping", "-n", "1", internetTestIP)
-	} else {
-		cmd = exec.Command("ping", "-c", "1", internetTestIP)
 	}
 
 	err := cmd.Run()
@@ -61,13 +56,17 @@ func checkInternetConnection() string {
 	return "✅ Internet Access: Successful"
 }
 
-func checkIntranetServer() string {
-	conn, err := net.DialTimeout("tcp", intranetHealthcheck, connectionTimeout)
-	if err != nil {
-		return fmt.Sprintf("❌ Intranet Server (%s): Failed", intranetHealthcheck)
+func checkPublicIPPing() string {
+	cmd := exec.Command("ping", "-c", "1", intranetPublicIP)
+	if os.PathSeparator == '\\' {
+		cmd = exec.Command("ping", "-n", "1", intranetPublicIP)
 	}
-	conn.Close()
-	return fmt.Sprintf("✅ Intranet Server (%s): Successful", intranetHealthcheck)
+
+	err := cmd.Run()
+	if err != nil {
+		return fmt.Sprintf("❌ Public IP (%s): Ping Failed", intranetPublicIP)
+	}
+	return fmt.Sprintf("✅ Public IP (%s): Ping Successful", intranetPublicIP)
 }
 
 func checkWireguardPortUDP() string {
@@ -79,16 +78,17 @@ func checkWireguardPortUDP() string {
 	return fmt.Sprintf("✅ WireGuard Port (UDP %s) on Public IP (%s): Accessible", wireguardPort, intranetPublicIP)
 }
 
-func checkIntranetHealthcheck() string {
-	client := http.Client{
-		Timeout: connectionTimeout,
+func checkSambaServerPing() string {
+	cmd := exec.Command("ping", "-c", "1", sambaServerIP)
+	if os.PathSeparator == '\\' {
+		cmd = exec.Command("ping", "-n", "1", sambaServerIP)
 	}
-	resp, err := client.Get("http://" + intranetHealthcheck)
-	if err != nil || resp.StatusCode != http.StatusOK {
-		return fmt.Sprintf("❌ Intranet Healthcheck (%s): Failed (%v)", intranetHealthcheck, err)
+
+	err := cmd.Run()
+	if err != nil {
+		return fmt.Sprintf("❌ Ping to (%s): Failed", sambaServerIP)
 	}
-	defer resp.Body.Close()
-	return fmt.Sprintf("✅ Intranet Healthcheck (%s): Successful", intranetHealthcheck)
+	return fmt.Sprintf("✅ Ping to (%s): Successful", sambaServerIP)
 }
 
 func checkSambaLogin() string {
@@ -112,7 +112,7 @@ func checkSambaLogin() string {
 
 	client, err := d.Dial(conn)
 	if err != nil {
-		return fmt.Sprintf("❌ Samba Login (%s): Failed (Auth Error: %v)", sambaServerIP, err)
+		return fmt.Sprintf("❌ Samba Login (%s): Failed (Authentication Error: %v)", sambaServerIP, err)
 	}
 	defer client.Logoff()
 
@@ -127,9 +127,9 @@ func main() {
 
 	labels := []*widget.Label{
 		widget.NewLabel("⌛ Internet Access: Running..."),
-		widget.NewLabel("⌛ Intranet Server: Running..."),
-		widget.NewLabel("⌛ WireGuard Port on Public IP: Running..."),
-		widget.NewLabel("⌛ Intranet Healthcheck: Running..."),
+		widget.NewLabel("⌛ Public IP Ping: Running..."),
+		widget.NewLabel("⌛ WireGuard Port: Running..."),
+		widget.NewLabel(fmt.Sprintf("⌛ Ping to %s: Running...", sambaServerIP)),
 		widget.NewLabel("⌛ Samba Login: Running..."),
 	}
 
@@ -149,9 +149,9 @@ func main() {
 			label   *widget.Label
 		}{
 			{checkInternetConnection, labels[0]},
-			{checkIntranetServer, labels[1]},
+			{checkPublicIPPing, labels[1]},
 			{checkWireguardPortUDP, labels[2]},
-			{checkIntranetHealthcheck, labels[3]},
+			{checkSambaServerPing, labels[3]},
 			{checkSambaLogin, labels[4]},
 		}
 
